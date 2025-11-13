@@ -18,9 +18,13 @@ import {
     ColumnDef,
     flexRender,
     getCoreRowModel,
+    getPaginationRowModel,
+    getSortedRowModel,
+    getFilteredRowModel,
     useReactTable,
     VisibilityState,
     SortingState,
+    ColumnFiltersState
 } from '@tanstack/react-table';
 import {
     Search,
@@ -34,6 +38,7 @@ import {
     Globe,
     Users,
     DollarSign,
+    ExternalLink
 } from 'lucide-react';
 
 interface Lead {
@@ -57,16 +62,18 @@ interface Lead {
 }
 
 export default function Dashboard() {
+    // ALL HOOKS AT TOP - UNCONDITIONAL
     const { data: session, status } = useSession();
     const router = useRouter();
     const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
     const [sorting, setSorting] = useState<SortingState>([]);
+    const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+    const [globalFilter, setGlobalFilter] = useState('');
     const [pageIndex, setPageIndex] = useState(0);
     const [pageSize] = useState(50);
     const [showFilters, setShowFilters] = useState(false);
 
     const [searchInput, setSearchInput] = useState(''); // Local input state
-    const [globalFilter, setGlobalFilter] = useState(''); // Debounced search value
     const [industryFilter, setIndustryFilter] = useState('all');
     const [statusFilter, setStatusFilter] = useState('all');
     const [countryFilter, setCountryFilter] = useState('all');
@@ -77,7 +84,6 @@ export default function Dashboard() {
         const timer = setTimeout(() => {
             setGlobalFilter(searchInput);
         }, 500); // Wait 500ms after user stops typing
-
         return () => clearTimeout(timer);
     }, [searchInput]);
 
@@ -102,10 +108,11 @@ export default function Dashboard() {
         enabled: status === 'authenticated' && !!session,
         refetchOnWindowFocus: false,
         staleTime: 300000, // 5 minutes
-        cacheTime: 600000, // 10 minutes
+        gcTime: 600000, // 10 minutes (renamed from cacheTime)
     });
 
-    const data = apiResponse?.data || [];
+    // Extract without shadowing (use apiResponse directly)
+    const leadsData = apiResponse?.data || [];
     const total = apiResponse?.total || 0;
 
     // Fetch all unique values for filters (separate query)
@@ -123,43 +130,9 @@ export default function Dashboard() {
         },
         enabled: status === 'authenticated' && !!session,
         staleTime: 3600000, // 1 hour
-        cacheTime: 7200000, // 2 hours
+        gcTime: 7200000, // 2 hours (renamed)
         retry: false, // Don't retry if endpoint doesn't exist
     });
-
-    // Fallback: Extract unique values from current data if API fails
-    const uniqueIndustries = useMemo(() => {
-        if (filtersData?.industries) {
-            return ['all', ...filtersData.industries];
-        }
-        // Fallback to extracting from all available data
-        const allIndustries = data.map((lead: Lead) => lead.industry).filter(Boolean);
-        return ['all', ...Array.from(new Set(allIndustries)).sort()];
-    }, [filtersData, data]);
-
-    const uniqueStatuses = useMemo(() => {
-        if (filtersData?.statuses) {
-            return ['all', ...filtersData.statuses];
-        }
-        const allStatuses = data.map((lead: Lead) => lead.email_status).filter(Boolean);
-        return ['all', ...Array.from(new Set(allStatuses)).sort()];
-    }, [filtersData, data]);
-
-    const uniqueCountries = useMemo(() => {
-        if (filtersData?.countries) {
-            return ['all', ...filtersData.countries];
-        }
-        const allCountries = data.map((lead: Lead) => lead.country).filter(Boolean);
-        return ['all', ...Array.from(new Set(allCountries)).sort()];
-    }, [filtersData, data]);
-
-    const uniqueLeadStatuses = useMemo(() => {
-        if (filtersData?.leadStatuses) {
-            return ['all', ...filtersData.leadStatuses];
-        }
-        const allLeadStatuses = data.map((lead: Lead) => lead.lead_status).filter(Boolean);
-        return ['all', ...Array.from(new Set(allLeadStatuses)).sort()];
-    }, [filtersData, data]);
 
     // Fetch stats
     const { data: statsData } = useQuery({
@@ -178,9 +151,10 @@ export default function Dashboard() {
         },
         enabled: status === 'authenticated' && !!session,
         staleTime: 300000, // 5 minutes
-        cacheTime: 600000, // 10 minutes
+        gcTime: 600000, // 10 minutes (renamed)
     });
 
+    // Redirect effect
     useEffect(() => {
         if (status === 'unauthenticated') {
             router.push('/login');
@@ -192,6 +166,41 @@ export default function Dashboard() {
         setPageIndex(0);
     }, [globalFilter, industryFilter, statusFilter, countryFilter, leadStatusFilter]);
 
+    // Fallback: Extract unique values from current data if API fails
+    const uniqueIndustries = useMemo(() => {
+        if (filtersData?.industries) {
+            return ['all', ...filtersData.industries];
+        }
+        // Fallback to extracting from all available data
+        const allIndustries = leadsData.map((lead: Lead) => lead.industry).filter(Boolean);
+        return ['all', ...Array.from(new Set(allIndustries)).sort()];
+    }, [filtersData, leadsData]);
+
+    const uniqueStatuses = useMemo(() => {
+        if (filtersData?.statuses) {
+            return ['all', ...filtersData.statuses];
+        }
+        const allStatuses = leadsData.map((lead: Lead) => lead.email_status).filter(Boolean);
+        return ['all', ...Array.from(new Set(allStatuses)).sort()];
+    }, [filtersData, leadsData]);
+
+    const uniqueCountries = useMemo(() => {
+        if (filtersData?.countries) {
+            return ['all', ...filtersData.countries];
+        }
+        const allCountries = leadsData.map((lead: Lead) => lead.country).filter(Boolean);
+        return ['all', ...Array.from(new Set(allCountries)).sort()];
+    }, [filtersData, leadsData]);
+
+    const uniqueLeadStatuses = useMemo(() => {
+        if (filtersData?.leadStatuses) {
+            return ['all', ...filtersData.leadStatuses];
+        }
+        const allLeadStatuses = leadsData.map((lead: Lead) => lead.lead_status).filter(Boolean);
+        return ['all', ...Array.from(new Set(allLeadStatuses)).sort()];
+    }, [filtersData, leadsData]);
+
+    // Columns (unchanged)
     const columns: ColumnDef<Lead>[] = [
         {
             accessorKey: 'first_name',
@@ -291,9 +300,7 @@ export default function Dashboard() {
                             className="text-blue-400 hover:text-blue-300"
                             title="LinkedIn Profile"
                         >
-                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                                <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
-                            </svg>
+                            <ExternalLink className="w-4 h-4" />  {/* Use ExternalLink for simplicity */}
                         </a>
                     )}
                 </div>
@@ -310,19 +317,30 @@ export default function Dashboard() {
         }
     ];
 
+    // Table: Always called with dummy data on load
     const table = useReactTable({
-        data: data,
+        data: isLoading ? [] : leadsData,  // Use leadsData to avoid shadowing
         columns,
         state: {
             columnVisibility,
             sorting,
+            columnFilters,
+            globalFilter,
+            pagination: { pageIndex, pageSize }
         },
         onColumnVisibilityChange: setColumnVisibility,
         onSortingChange: setSorting,
+        onColumnFiltersChange: setColumnFilters,
+        onGlobalFilterChange: setGlobalFilter,
+        onPaginationChange: (updater) => setPageIndex(typeof updater === 'function' ? updater({ pageIndex, pageSize }).pageIndex : updater.pageIndex),
         getCoreRowModel: getCoreRowModel(),
-        manualPagination: true,
-        manualSorting: true,
+        getSortedRowModel: getSortedRowModel(),
+        getFilteredRowModel: getFilteredRowModel(),
+        getPaginationRowModel: getPaginationRowModel(),
+        manualPagination: true,  // Server-side for efficiency
+        manualSorting: true,  // Server-side sorting if API supports
         pageCount: Math.ceil(total / pageSize),
+        columnResizeMode: 'onChange',
     });
 
     const clearFilters = () => {
@@ -348,6 +366,7 @@ export default function Dashboard() {
             });
 
             const res = await fetch(`/api/leads?${params}`);
+            if (!res.ok) throw new Error('Failed to fetch all data');
             const { data: allData } = await res.json();
 
             const csvHeaders = ['First Name', 'Last Name', 'Title', 'Email', 'Company', 'Industry', 'City', 'State', 'Country', 'Employees', 'Revenue'];
@@ -399,6 +418,11 @@ export default function Dashboard() {
         setPageIndex(Math.ceil(total / pageSize) - 1);
     };
 
+    const pageCount = Math.ceil(total / pageSize);
+    const canPreviousPage = pageIndex > 0;
+    const canNextPage = pageIndex < pageCount - 1;
+
+    // RENDER - AFTER ALL HOOKS/TABLE
     if (status === 'loading' || isLoading) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 via-black to-gray-900">
@@ -413,10 +437,6 @@ export default function Dashboard() {
     if (status === 'unauthenticated') {
         return null;
     }
-
-    const pageCount = Math.ceil(total / pageSize);
-    const canPreviousPage = pageIndex > 0;
-    const canNextPage = pageIndex < pageCount - 1;
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white">
@@ -447,7 +467,6 @@ export default function Dashboard() {
                     </div>
                 </div>
             </header>
-
             <div className="container mx-auto px-6 py-6">
                 {/* Stats Cards */}
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
@@ -505,7 +524,6 @@ export default function Dashboard() {
                         </CardContent>
                     </Card>
                 </div>
-
                 {/* Search and Filters */}
                 <Card className="border-gray-800 bg-black/40 backdrop-blur-sm mb-4">
                     <CardContent className="p-4">
@@ -550,7 +568,6 @@ export default function Dashboard() {
                                     Export CSV
                                 </Button>
                             </div>
-
                             {showFilters && (
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 pt-3 border-t border-gray-800">
                                     <Select value={industryFilter} onValueChange={setIndustryFilter}>
@@ -569,7 +586,6 @@ export default function Dashboard() {
                                             )}
                                         </SelectContent>
                                     </Select>
-
                                     <Select value={statusFilter} onValueChange={setStatusFilter}>
                                         <SelectTrigger className="bg-gray-900/50 border-gray-700">
                                             <SelectValue placeholder="Select Email Status" />
@@ -586,7 +602,6 @@ export default function Dashboard() {
                                             )}
                                         </SelectContent>
                                     </Select>
-
                                     <Select value={countryFilter} onValueChange={setCountryFilter}>
                                         <SelectTrigger className="bg-gray-900/50 border-gray-700">
                                             <SelectValue placeholder="Select Country" />
@@ -603,7 +618,6 @@ export default function Dashboard() {
                                             )}
                                         </SelectContent>
                                     </Select>
-
                                     <Select value={leadStatusFilter} onValueChange={setLeadStatusFilter}>
                                         <SelectTrigger className="bg-gray-900/50 border-gray-700">
                                             <SelectValue placeholder="Select Lead Status" />
@@ -622,7 +636,6 @@ export default function Dashboard() {
                                     </Select>
                                 </div>
                             )}
-
                             {(industryFilter !== 'all' || statusFilter !== 'all' || countryFilter !== 'all' || leadStatusFilter !== 'all' || searchInput) && (
                                 <Button
                                     variant="ghost"
@@ -637,7 +650,6 @@ export default function Dashboard() {
                         </div>
                     </CardContent>
                 </Card>
-
                 {/* Table */}
                 <Card className="border-gray-800 bg-black/40 backdrop-blur-sm relative">
                     <CardContent className="p-0">
@@ -657,10 +669,15 @@ export default function Dashboard() {
                                             {headerGroup.headers.map(header => (
                                                 <th
                                                     key={header.id}
-                                                    className="text-left text-gray-300 font-semibold px-4 py-3"
+                                                    className="text-left text-gray-300 font-semibold px-4 py-3 cursor-pointer hover:text-white transition-colors"
+                                                    onClick={header.column.getToggleSortingHandler()}
                                                 >
                                                     <div className="flex items-center gap-2">
                                                         {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                                                        {{
+                                                            asc: <ChevronUp className="w-4 h-4 text-green-400" />,
+                                                            desc: <ChevronDown className="w-4 h-4 text-green-400" />,
+                                                        }[header.column.getIsSorted() as string] ?? null}
                                                     </div>
                                                 </th>
                                             ))}
@@ -668,17 +685,15 @@ export default function Dashboard() {
                                     ))}
                                 </thead>
                                 <tbody>
-                                    {data?.length ? (
-                                        data.map((row: Lead, idx: number) => (
+                                    {table.getRowModel().rows?.length ? (
+                                        table.getRowModel().rows.map(row => (
                                             <tr
-                                                key={idx}
+                                                key={row.id}
                                                 className="border-b border-gray-800 hover:bg-gray-900/30 transition-colors"
                                             >
-                                                {columns.map((column, colIdx) => (
-                                                    <td key={colIdx} className="px-4 py-4">
-                                                        {column.cell && typeof column.cell === 'function'
-                                                            ? column.cell({ row: { original: row, getValue: (key: string) => row[key as keyof Lead] } } as any)
-                                                            : null}
+                                                {row.getVisibleCells().map(cell => (
+                                                    <td key={cell.id} className="px-4 py-4">
+                                                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
                                                     </td>
                                                 ))}
                                             </tr>
