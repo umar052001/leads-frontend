@@ -12,10 +12,14 @@ const handler = NextAuth({
       async authorize(credentials) {
         // Hardcoded for demo; replace with DB check
         if (
-          credentials?.username === "admin" &&
-          credentials?.password === "your_secure_password_here"
+          credentials?.username === "testuser" &&
+          credentials?.password === "testuser-0022"
         ) {
-          return { id: "1", name: "Admin User", email: "admin@example.com" };
+          return {
+            id: "1",
+            name: "Test User",
+            email: "testuser@useimagini.ai",
+          };
         }
         return null;
       },
